@@ -270,17 +270,19 @@ Keep the list focused — AutoMod is a rule-based filter, not a perfect toxicity
 
 ## Android / Termux
 
-The bot is plain Node.js, so it runs headless on Android through Termux.
+The bot is plain Node.js, so it runs headless on Android through Termux. A ready-made folder with the full tutorial lives at **[`termux/`](termux/README.md)**:
 
 ```sh
-bash scripts/termux-setup.sh     # installs nodejs, ffmpeg, python, yt-dlp
-cp .env.example .env             # fill DISCORD_TOKEN / CLIENT_ID / GUILD_ID
-npm install                      # use --ignore-scripts if ffmpeg-static fails
-npm start
+git clone https://github.com/Savvyonnat/sulfuric-assistant.git
+cd sulfuric-assistant
+bash termux/setup.sh          # installs nodejs, ffmpeg, python, yt-dlp + npm install
+cp .env.example .env && nano .env
+bash termux/start.sh
 ```
 
+- `termux/setup.sh` / `start.sh` / `stop.sh` / `boot.sh` handle packages, the wake lock and boot autostart.
 - `tools.js` resolves binaries in order: bundled `bin/` → system PATH → `python -m yt_dlp`. On Termux the system `ffmpeg` and `yt-dlp` are used.
-- Keep Termux alive with `termux-wake-lock` and disable battery optimisation; run in the background with `nohup npm start > bot.log 2>&1 &`.
+- Keep Termux alive with `termux-wake-lock` (Termux:API) and set battery optimisation to **Unrestricted**.
 - Voice playback works, but Android may kill the process when Termux is swiped away.
 
 ## AI agent
