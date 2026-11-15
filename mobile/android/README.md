@@ -11,6 +11,7 @@ Native Android app for **Sulfuric**: a bubble floating over other apps (Siri-sty
 - **Full AI chat**: text, history, API key / base URL / model settings.
 - **Voice** via Android's `SpeechRecognizer` (a JS bridge `AndroidVoice`), not the Web Speech API.
 - **"My phone" status**: battery (level + charging), storage, RAM, network type and uptime, read through the `AndroidPhone` bridge (`PhoneStatus.kt`).
+- **Phone control**: the chat can actually operate the phone — flashlight on/off, open any app by name, set volume (percent / up / down / mute), set brightness, open Wi-Fi/Bluetooth/NFC settings, and go home. Executed by `PhoneControl.kt` through the `AndroidControl` bridge, with a local Indonesian/English command parser so it works even when the AI is offline.
 - Foreground service + notification so the bubble stays alive.
 - Open source, no account, no server.
 
@@ -65,7 +66,8 @@ android/
 │       │   ├── ChatActivity.kt         # WebView chat
 │       │   ├── FloatingBubbleService.kt# overlay bubble
 │       │   ├── VoiceBridge.kt          # SpeechRecognizer -> JS
-│       │   └── PhoneStatus.kt          # phone state + AndroidPhone bridge
+│       │   ├── PhoneStatus.kt          # phone state + AndroidPhone bridge
+│       │   └── PhoneControl.kt         # actions + AndroidControl bridge
 │       └── res/…                       # layouts, themes, icons
 ├── build.gradle
 ├── settings.gradle

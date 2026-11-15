@@ -25,6 +25,9 @@ class MainActivity : AppCompatActivity() {
     private val audioPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
+    private val cameraPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
@@ -51,6 +54,7 @@ class MainActivity : AppCompatActivity() {
             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
         audioPermission.launch(Manifest.permission.RECORD_AUDIO)
+        cameraPermission.launch(Manifest.permission.CAMERA)
 
         updateStatus()
     }

@@ -137,6 +137,30 @@ body { overscroll-behavior: none; }
 }
 .phone-row span { color: var(--muted); }
 .phone-row strong { text-align: right; font-weight: 600; }
+.chips { display: flex; gap: 8px; padding: 8px 14px 0; overflow-x: auto; scrollbar-width: none; }
+.chips::-webkit-scrollbar { display: none; }
+.chip {
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  background: var(--bg-2);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 7px 13px;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.chip:active { background: var(--accent); color: #fff; }
+.msg.system {
+  align-self: center;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  padding: 6px 10px;
+  max-width: 90%;
+  text-align: center;
+}
 .btn { flex: 1; border: 0; border-radius: 10px; padding: 12px; font-size: 14px; font-weight: 600; cursor: pointer; }
 .btn.primary { background: var(--accent); color: #fff; }
 .btn.ghost { background: #1a2030; color: var(--text); }

@@ -11,6 +11,8 @@ Mobile AI assistant for **Sulfuric**, as an installable web app. One page, no bu
 - **Voice input** (Web Speech API, Chrome/Android) — tap the mic and talk.
 - Chat history saved on the device (localStorage).
 - **My phone** panel (phone icon): battery, storage, memory, network, device model, uptime.
+- **Phone control**: chat commands that actually operate the phone — flashlight, open an app, volume, brightness, Wi-Fi/Bluetooth panels, go home. Runs in the Android app (`AndroidControl` bridge); in a plain browser it explains that control needs the app.
+- Quick-action chips above the keyboard.
 - Installable to the home screen (manifest + service worker), full-screen look.
 - No account, no server, no build.
 

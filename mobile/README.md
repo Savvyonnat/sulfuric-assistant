@@ -9,6 +9,7 @@ Two ways to run the Sulfuric AI on Android:
 | Requires build | no | yes |
 | Voice | Web Speech API (Chrome) | SpeechRecognizer (native) |
 | "My phone" status | Web APIs (battery, storage, memory, network) | native bridge (battery, storage, RAM, network, uptime) |
+| Control the phone (flashlight, apps, volume, brightness, Wi-Fi) | no (browser cannot) | yes, from chat |
 | Chat UI | same | same (copied into assets) |
 | Available | right now | after the APK is built |
 

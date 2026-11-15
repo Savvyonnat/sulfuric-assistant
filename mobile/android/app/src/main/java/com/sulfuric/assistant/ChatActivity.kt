@@ -45,6 +45,7 @@ class ChatActivity : AppCompatActivity() {
         voiceBridge = VoiceBridge(this, web)
         web.addJavascriptInterface(voiceBridge!!, "AndroidVoice")
         web.addJavascriptInterface(PhoneBridge(this), "AndroidPhone")
+        web.addJavascriptInterface(ControlBridge(this), "AndroidControl")
 
         web.loadUrl("file:///android_asset/www/index.html")
     }

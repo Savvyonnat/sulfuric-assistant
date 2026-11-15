@@ -3,12 +3,19 @@
 // Sulfuric mobile assistant — talks to any OpenAI-compatible chat endpoint.
 // Everything (API key included) stays in this device's localStorage.
 
-const SYSTEM = `You are Sulfuric, a friendly AI assistant.
+const SYSTEM = `You are Sulfuric, a friendly AI assistant living on the user's phone.
 - Be helpful, warm, and concise.
 - Use text faces like >w<, >:3, :3c, ^w^ naturally, but not after every sentence.
 - Never use Unicode emoji.
 - Answer what the user actually asked.
-- Never claim to be human.`;
+- Never claim to be human.
+
+Phone control:
+- You can control this phone: flashlight on/off, open an app by name, set volume
+  (percent / up / down / mute), set brightness (percent), open Wi-Fi/Bluetooth/NFC
+  settings, and go home.
+- When the user asks for one of these, a line starting with [Phone] follows their
+  message with the real result. Answer naturally based on that result.`;
 
 const DEFAULTS = {
   apiKey: "",
@@ -99,10 +106,11 @@ function renderHistory() {
 
 /* ---------- AI call ---------- */
 
-async function askAI(prompt) {
+async function askAI(prompt, systemExtra = "") {
   const p = provider();
+  const system = systemExtra ? SYSTEM + "\n\n" + systemExtra : SYSTEM;
   const messages = [
-    { role: "system", content: SYSTEM },
+    { role: "system", content: system },
     ...history.slice(-10).map(m => ({ role: m.role, content: m.content.slice(0, 2000) })),
     { role: "user", content: prompt.slice(0, 4000) }
   ];
@@ -139,7 +147,15 @@ async function send(text) {
   addMessage("user", prompt);
   els.typing.classList.remove("hidden");
   try {
-    const reply = await askAI(prompt);
+    let extra = "";
+    const cmd = parseCommand(prompt);
+    if (cmd) {
+      const result = await runControl(cmd.action, cmd.arg || "");
+      addMessage("system", result);
+      extra = "\n\n[Phone] " + result;
+    }
+    const phoneCtx = await phoneContext();
+    const reply = await askAI(prompt + extra, phoneCtx);
     addMessage("bot", reply);
     history.push({ role: "user", content: prompt }, { role: "assistant", content: reply });
     save("sulfuric.history", history.slice(-20));
@@ -155,6 +171,10 @@ async function send(text) {
 }
 
 els.form.addEventListener("submit", e => { e.preventDefault(); send(); });
+
+document.querySelectorAll(".chip").forEach(btn => {
+  btn.addEventListener("click", () => send(btn.dataset.cmd));
+});
 
 /* Voice input: native Android bridge (SpeechRecognizer) when running in the app,
    otherwise the browser's Web Speech API. */
@@ -193,6 +213,86 @@ if (hasNativeVoice()) {
       addMessage("error", "Could not recognize speech (" + (e.error || "error") + ").");
     });
   }
+}
+
+/* ---------- phone control ---------- */
+
+function word(w) { return new RegExp("(^|\\s)" + w + "(\\s|$)"); }
+
+/**
+ * Turn a chat message into a phone command. Indonesian and English.
+ * Returns null when the message is ordinary conversation.
+ */
+function parseCommand(raw) {
+  const t = String(raw || "").trim().toLowerCase().replace(/[?.!]+$/g, "").trim();
+  if (!t) return null;
+
+  if (/(flashlight|torch|senter|sentat|sentel|lampu\s+(kamera|flashlight|sent))/.test(t)) {
+    if (word("nyalain").test(t) || word("nyalakan").test(t) || word("hidupkan").test(t) ||
+        word("aktifkan").test(t) || word("turn on").test(t) || word("switch on").test(t) ||
+        word("enable").test(t) || word("on").test(t)) return { action: "flashlight", arg: "on" };
+    if (word("matiin").test(t) || word("matikan").test(t) || word("padamkan").test(t) ||
+        word("nonaktifkan").test(t) || word("turn off").test(t) || word("switch off").test(t) ||
+        word("disable").test(t) || word("off").test(t)) return { action: "flashlight", arg: "off" };
+    return { action: "flashlight", arg: "toggle" };
+  }
+
+  if (/(wifi|wi-fi|bluetooth|nfc)/.test(t)) {
+    const arg = /bluetooth/.test(t) ? "bluetooth" : /nfc/.test(t) ? "nfc" : "wifi";
+    return { action: "panel", arg };
+  }
+
+  if (/(volume|suara)/.test(t)) {
+    const pct = t.match(/(\d{1,3})/);
+    if (pct) return { action: "volume", arg: pct[1] };
+    if (/(naik|naikin|tambah|besarin|up)/.test(t)) return { action: "volume", arg: "up" };
+    if (/(turun|turunin|kurang|kecilin|down)/.test(t)) return { action: "volume", arg: "down" };
+    if (/(bisu|mute|senyap|hening)/.test(t)) return { action: "volume", arg: "mute" };
+    return { action: "volume", arg: "" };
+  }
+
+  if (/(brightness|kecerahan)/.test(t)) {
+    const pct = t.match(/(\d{1,3})/);
+    return { action: "brightness", arg: pct ? pct[1] : "" };
+  }
+
+  if (word("home").test(t) || word("homepage").test(t) || word("beranda").test(t) ||
+      word("layar utama").test(t) || word("go home").test(t) ||
+      word("back to home").test(t) || word("kembali ke home").test(t)) {
+    return { action: "home", arg: "" };
+  }
+
+  const open = t.match(/^(?:buka|bukakan|jalankan|luncurkan|launch|open|start|run)\s+(.+)$/);
+  if (open) return { action: "open_app", arg: open[1] };
+
+  return null;
+}
+
+function runControl(action, arg) {
+  return new Promise(resolve => {
+    if (window.AndroidControl && typeof window.AndroidControl.run === "function") {
+      try { resolve(String(window.AndroidControl.run(action, arg || ""))); return; }
+      catch (e) { resolve("Control failed: " + e.message); return; }
+    }
+    resolve("This works inside the Sulfuric Android app - a browser cannot control the phone.");
+  });
+}
+
+/** One-line phone summary for the AI system prompt. */
+async function phoneContext() {
+  try {
+    if (window.AndroidPhone && typeof window.AndroidPhone.status === "function") {
+      const s = JSON.parse(window.AndroidPhone.status());
+      const d = s.device || {}, b = s.battery || {}, st = s.storage || {}, m = s.memory || {}, n = s.network || {};
+      const bits = ["device " + ((d.manufacturer ? d.manufacturer + " " : "") + (d.model || "?")).trim()];
+      bits.push("battery " + (b.level >= 0 ? b.level + "%" + (b.charging ? " charging" : "") : "n/a"));
+      if (st.total) bits.push("storage " + formatBytes(st.used) + "/" + formatBytes(st.total));
+      if (m.total) bits.push("ram " + formatBytes(m.available) + " free/" + formatBytes(m.total));
+      bits.push("network " + (n.online ? n.type : "offline"));
+      return "[Phone] " + bits.join(", ");
+    }
+  } catch { /* ignore */ }
+  return "";
 }
 
 /* ---------- phone status ---------- */

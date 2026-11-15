@@ -315,7 +315,7 @@ docker run --env-file .env sulfuric
 Run the Sulfuric AI on Android through Discord, through the PWA, or through the native app with a floating bubble:
 
 - [mobile/pwa](mobile/pwa) — web app, install to the home screen, no build.
-- [mobile/android](mobile/android) — native APK with a floating bubble and a "My phone" status panel (battery, storage, RAM, network, uptime). Build it with the bundled Gradle wrapper, Android Studio, or GitHub Actions (`.github/workflows/android.yml` builds and uploads the APK).
+- [mobile/android](mobile/android) — native APK: ChatGPT-style chat that can **control your phone** (flashlight, open apps, volume, brightness, Wi-Fi/Bluetooth, home) plus a floating bubble and a "My phone" status panel. Build it with the bundled Gradle wrapper, Android Studio, or GitHub Actions (`.github/workflows/android.yml` builds and uploads the APK).
 
 See [mobile/README.md](mobile/README.md).
 
