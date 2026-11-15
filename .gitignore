@@ -1,0 +1,23 @@
+# secrets & local data
+.env
+.env.*
+!.env.example
+database.json
+database.json.tmp
+*.log
+npm-debug.log*
+
+# dependencies
+node_modules/
+
+# downloaded binaries
+bin/yt-dlp.exe
+bin/yt-dlp
+
+# android build output
+mobile/android/.gradle/
+mobile/android/build/
+mobile/android/app/build/
+mobile/android/local.properties
+*.apk
+*.aab

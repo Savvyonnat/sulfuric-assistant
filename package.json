@@ -1,0 +1,37 @@
+{
+  "name": "sulfuric",
+  "version": "5.0.0",
+  "private": true,
+  "description": "Sulfuric — a Discord bot with moderation, security, roles and channel tools, accurate weather, gifts, giveaways, and fun commands.",
+  "main": "index.js",
+  "license": "MIT",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js",
+    "check": "node --check index.js && node --check automod.js && node --check ai.js && node --check music.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@discordjs/voice": "^0.19.2",
+    "discord.js": "^14.27.0",
+    "dotenv": "^16.6.1",
+    "ffmpeg-static": "^5.2.0",
+    "gif-encoder": "^0.7.2",
+    "jimp": "^1.6.1",
+    "opusscript": "^0.0.8"
+  },
+  "keywords": [
+    "discord",
+    "discord-bot",
+    "moderation",
+    "fun",
+    "weather",
+    "giveaway"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/YOUR_USERNAME/sulfur-bot.git"
+  }
+}
