@@ -162,21 +162,26 @@ object PhoneControl {
 
     private fun openPanel(context: Context, arg: String?): String {
         val which = arg?.trim()?.lowercase().orEmpty()
+        val label = if (which.isEmpty()) "internet" else which
         val intent = Intent(
-            when (which) {
-                "wifi", "internet", "data" -> Settings.Panel.ACTION_INTERNET_CONNECTIVITY
-                "bluetooth" -> Settings.Panel.ACTION_BLUETOOTH
-                "nfc" -> Settings.Panel.ACTION_NFC
-                else -> Settings.Panel.ACTION_INTERNET_CONNECTIVITY
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                when (which) {
+                    "bluetooth" -> Settings.ACTION_BLUETOOTH_SETTINGS
+                    "nfc" -> Settings.ACTION_NFC_SETTINGS
+                    else -> Settings.Panel.ACTION_INTERNET_CONNECTIVITY
+                }
+            } else {
+                when (which) {
+                    "bluetooth" -> Settings.ACTION_BLUETOOTH_SETTINGS
+                    "nfc" -> Settings.ACTION_NFC_SETTINGS
+                    else -> Settings.ACTION_WIFI_SETTINGS
+                }
             }
         )
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-            intent.action = Settings.ACTION_WIFI_SETTINGS
-        }
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         return try {
             context.startActivity(intent)
-            "Opening ${if (which.isEmpty()) "internet" else which} settings"
+            "Opening $label settings"
         } catch (e: Exception) {
             "Could not open that panel: ${e.message}"
         }
