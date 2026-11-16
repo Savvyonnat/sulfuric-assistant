@@ -17,6 +17,7 @@ A Discord bot with moderation, anti-raid security, roles and channel tools, accu
 - **Fun** — `/gift` with cumulative coins, `/poll`, `/giveaway`, `/remind`, `/afk`, `/rps`, `/joke`, `/fact`, `/coinflip`, `/dice`, `/8ball`, and 16 cute action commands.
 - **Utilities** — `/photo2gif` (static GIF), `/uwuify`, `/ytmp3`, `/serverinfo`, `/userinfo`, `/membercount`, `/avatar`, `/invite`, `/ping`, `/help`, `/about`.
 - **AI agent** — `/ai` and `@Sulfuric` mentions via an OpenAI-compatible endpoint, with long-term per-user memory (`/remember`, `/forget`, `/memories`). Works out of the box on a free provider, or set `AI_API_KEY` for Groq.
+- **Music** — `!play`/`/play`, `!skip`, `!stop`, `!list`, `!ytmp3`, plus `/afkvc` (keep the bot in voice 24/7) and `/vclist` (who is in voice, for how long).
 - **Configurable presence** — `ACTIVITY_NAME` sets the "Playing ..." activity.
 
 ---
@@ -160,6 +161,20 @@ Example: `!play alan walker faded`, `!play https://youtu.be/...`
 | Command | Description |
 |---|---|
 | `/proxy bot:<bot> command:<text>` | Run another bot's command as Sulfuric (owner or admin) |
+
+### Voice / music
+| Command | Description |
+|---|---|
+| `!play <song>` / `/play <song>` | Play in your voice channel |
+| `!skip` / `/skip` | Skip the current song |
+| `!stop` / `/stop` | Stop and clear the queue |
+| `!list` / `/list` | Show the queue |
+| `!ytmp3 <url>` | Download a song as MP3 |
+| `/afkvc enabled:<true\|false> [channel]` | Keep Sulfuric in voice (AFK mode) |
+| `/vclist [channel]` | Who is in voice, and for how long |
+
+- `/afkvc` joins the channel and streams near-inaudible audio (default pink noise at about -68 dB, tune with `AFK_NOISE`) so Discord never moves the bot to AFK or disconnects it. It also keeps an empty channel from closing.
+- `/vclist` tracks how long each member has been in voice; durations start when the bot sees them join.
 
 Example: `/proxy bot:carl-bot command:!kick @spam reason: raid`
 

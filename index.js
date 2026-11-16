@@ -42,6 +42,8 @@ function saveDB(db) {
 }
 const db = loadDB();
 const aiHistory = new Map();
+// `${guildId}:${userId}` -> epoch ms when they joined their current voice channel.
+const vcJoins = new Map();
 const aiCooldowns = new Map();
 const AI_COOLDOWN_MS = Number(process.env.AI_COOLDOWN_MS || 5000);
 function cooldownLeft(key) {
@@ -63,7 +65,7 @@ function isOwner(member) {
   const owner = client.application?.owner;
   return !!owner && owner.id === member.id;
 }
-const ROLE_DECLINED = "command-checkingrole-roledeclined-sorry";
+const NO_PERMISSION = "You do not have permission to use this command. >w<";
 // Moderation commands and the permission each one requires.
 const MOD_PERMISSIONS = {
   ban: PermissionFlagsBits.BanMembers,
@@ -79,7 +81,7 @@ const MOD_PERMISSIONS = {
 };
 async function requirePermission(i, perm) {
   if (hasPerm(i.member, perm)) return true;
-  await i.reply({ content: ROLE_DECLINED, ephemeral: true }).catch(() => {});
+  await i.reply({ content: NO_PERMISSION, ephemeral: true }).catch(() => {});
   return false;
 }
 function getSubcommand(i) { try { return i.options.getSubcommand(); } catch { return null; } }
@@ -90,14 +92,42 @@ function uptime() {
   return `${d}d ${h}h ${m}m`;
 }
 
+function formatDuration(ms) {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600);
+  const m = Math.floor((s % 3600) / 60), sec = s % 60;
+  if (d) return `${d}d ${h}h`;
+  if (h) return `${h}h ${m}m`;
+  if (m) return `${m}m ${sec}s`;
+  return `${sec}s`;
+}
+
+/** "Who is in voice, and for how long" - used by /vclist and !vclist. */
+function buildVcList(guild, channel) {
+  const members = [...channel.members.values()];
+  const lines = members.map(m => {
+    const since = vcJoins.get(`${guild.id}:${m.id}`);
+    const dur = since ? formatDuration(Date.now() - since) : "since restart";
+    const flags = [m.voice?.mute ? "muted" : null, m.voice?.deaf ? "deaf" : null].filter(Boolean).join(", ");
+    return `- **${m.user.tag}**${flags ? ` (${flags})` : ""} - ${dur}`;
+  });
+  const afk = music.afkInfo(guild);
+  const afkLine = afk ? `\nAFK mode: **ON** for ${formatDuration(Date.now() - afk.since)}` : "";
+  const header = `**${channel.name}** - ${members.length} member${members.length === 1 ? "" : "s"} in voice`;
+  return `${header}${afkLine}\n${lines.length ? lines.join("\n") : "Nobody is here."}`;
+}
+
 function targetError(i, target) {
   if (!target) return "That member is not in the server.";
   if (target.id === i.user.id) return "You cannot do this to yourself.";
   if (target.id === client.user.id) return "Please do not moderate Sulfuric >w<";
   const authorHighest = i.member?.roles?.highest;
   if (!authorHighest) return "Could not determine your role position. Try again.";
-  if (i.guild.ownerId !== i.user.id && target.roles.highest.position >= authorHighest.position) return "The target's highest role is equal to or higher than yours.";
-  if (target.roles.highest.position >= i.guild.members.me.roles.highest.position) return "Sulfuric's highest role must be higher than the target's role.";
+  const targetHighest = target.roles?.highest;
+  if (!targetHighest) return "Could not read that member's roles. Try again.";
+  const meHighest = i.guild.members.me?.roles?.highest;
+  if (i.guild.ownerId !== i.user.id && targetHighest.position >= authorHighest.position) return "The target's highest role is equal to or higher than yours.";
+  if (meHighest && targetHighest.position >= meHighest.position) return "Sulfuric's highest role must be higher than the target's role.";
   return null;
 }
 
@@ -176,6 +206,8 @@ const commands = [
   new SlashCommandBuilder().setName("skip").setDescription("Skip the current song"),
   new SlashCommandBuilder().setName("stop").setDescription("Stop playback and clear the queue"),
   new SlashCommandBuilder().setName("list").setDescription("Show the song queue"),
+  new SlashCommandBuilder().setName("afkvc").setDescription("Keep Sulfuric in a voice channel (AFK mode)").addBooleanOption(o => o.setName("enabled").setDescription("On or off").setRequired(true)).addChannelOption(o => o.setName("channel").setDescription("Voice channel (default: your current one)")),
+  new SlashCommandBuilder().setName("vclist").setDescription("Show who is in a voice channel and for how long").addChannelOption(o => o.setName("channel").setDescription("Voice channel (default: yours)")),
   new SlashCommandBuilder().setName("proxy").setDescription("Run another bot's command (owner or admin)").addUserOption(o => o.setName("bot").setDescription("Target bot").setRequired(true)).addStringOption(o => o.setName("command").setDescription("Command for the target bot to run").setRequired(true)),
   new SlashCommandBuilder().setName("ytmp3").setDescription("Download a song as MP3").addStringOption(o => o.setName("url").setDescription("YouTube URL or song title").setRequired(true)),
   // Fun
@@ -316,6 +348,13 @@ client.once("clientReady", async () => {
 
   client.user.setPresence({ activities: [{ name: ACTIVITY_NAME, type: ActivityType.Playing }], status: "online" });
 
+  // Seed voice-join times so /vclist already knows about people in voice.
+  for (const guild of client.guilds.cache.values()) {
+    for (const [id, state] of guild.voiceStates.cache) {
+      if (state.channelId && !vcJoins.has(`${guild.id}:${id}`)) vcJoins.set(`${guild.id}:${id}`, Date.now());
+    }
+  }
+
   try {
     if (!CLIENT_ID) throw new Error("CLIENT_ID is not set in .env");
     const rest = new REST({ version: "10" }).setToken(DISCORD_TOKEN);
@@ -329,6 +368,15 @@ client.once("clientReady", async () => {
   } catch (e) {
     console.error("Failed to register slash commands:", e.message);
   }
+});
+
+client.on("voiceStateUpdate", (oldState, newState) => {
+  const before = oldState.channelId;
+  const after = newState.channelId;
+  if (before === after) return;
+  const key = `${newState.guild.id}:${newState.id}`;
+  if (after) vcJoins.set(key, Date.now());
+  else vcJoins.delete(key);
 });
 
 client.on("guildMemberAdd", async member => {
@@ -396,11 +444,20 @@ client.on("messageCreate", async message => {
     }
   }
 
-  // Prefix commands: !play, !skip, !stop, !list, !ytmp3
-  const prefix = message.content.match(/^!(play|skip|stop|list|ytmp3)\b\s*([\s\S]*)$/i);
+  // Prefix commands: !play, !skip, !stop, !list, !ytmp3, !afkvc, !vclist
+  const prefix = message.content.match(/^!(play|skip|stop|list|ytmp3|afkvc|vclist)\b\s*([\s\S]*)$/i);
   if (prefix) {
     const cmd = prefix[1].toLowerCase();
     const arg = (prefix[2] || "").trim();
+    if (cmd === "afkvc") {
+      if (/^(off|stop|mati)$/i.test(arg)) return message.channel.send(music.afkStop(message.guild)).catch(() => {});
+      return message.channel.send(await music.afkStart(message.guild, message.member?.voice?.channel || null)).catch(() => {});
+    }
+    if (cmd === "vclist") {
+      const channel = message.member?.voice?.channel || null;
+      if (!channel) return message.channel.send("Join a voice channel first, or use `/vclist`.").catch(() => {});
+      return message.channel.send(buildVcList(message.guild, channel)).catch(() => {});
+    }
     if (cmd === "play") {
       if (!arg) return message.channel.send("Usage: `!play <song name>`").catch(() => {});
       return message.channel.send(await music.play(message.guild, message.member, arg)).catch(() => {});
@@ -508,13 +565,29 @@ client.on("interactionCreate", async i => {
     if (name === "skip") { await i.deferReply(); return i.editReply(music.skip(i.guild)); }
     if (name === "stop") { await i.deferReply(); return i.editReply(music.stop(i.guild)); }
     if (name === "list") { return i.reply(music.list(i.guild)); }
+    if (name === "afkvc") {
+      const enabled = i.options.getBoolean("enabled", true);
+      if (!enabled) { await i.deferReply(); return i.editReply(music.afkStop(i.guild)); }
+      let channel = i.options.getChannel("channel");
+      if (channel && !(channel.isVoiceBased?.())) return i.reply({ content: "That is not a voice channel. >w<", ephemeral: true });
+      if (!channel) channel = i.member?.voice?.channel || null;
+      await i.deferReply();
+      return i.editReply(await music.afkStart(i.guild, channel));
+    }
+    if (name === "vclist") {
+      const channel = i.options.getChannel("channel") || i.member?.voice?.channel || null;
+      if (!channel || !(channel.isVoiceBased?.())) {
+        return i.reply({ content: "Join a voice channel, or tell me which one. >w<", ephemeral: true });
+      }
+      return i.reply(buildVcList(i.guild, channel));
+    }
 
     // Run another bot's command (owner or server admin only, allowlisted)
     if (name === "proxy") {
       const callerAllowed = isOwner(i.member)
         || !!i.member?.permissions?.has(PermissionFlagsBits.Administrator)
         || !!i.member?.permissions?.has(PermissionFlagsBits.ManageGuild);
-      if (!callerAllowed) return i.reply({ content: ROLE_DECLINED, ephemeral: true });
+      if (!callerAllowed) return i.reply({ content: NO_PERMISSION, ephemeral: true });
       const bot = i.options.getUser("bot", true);
       const command = i.options.getString("command", true);
       const allowed = (process.env.PROXY_BOTS || "").split(",").map(s => s.trim()).filter(Boolean);
@@ -557,7 +630,7 @@ client.on("interactionCreate", async i => {
           { name: "Roles and channels", value: "`/role add|remove` `/nickname` `/slowmode` `/lock` `/unlock` `/say`" },
           { name: "Utilities", value: "`/ping` `/serverinfo` `/userinfo` `/membercount` `/avatar` `/invite` `/weather` `/photo2gif` `/uwuify` `/ytmp3`" },
           { name: "AI", value: "`/ai` — chat\n`/remember` `/forget` `/memories` — Sulfuric remembers things about you" },
-          { name: "Music", value: "`!play <song>` `/play` — play in voice\n`!skip` `/skip` — skip\n`!stop` `/stop` — stop\n`!list` `/list` — queue" },
+          { name: "Music", value: "`!play <song>` `/play` — play in voice\n`!skip` `/skip` — skip\n`!stop` `/stop` — stop\n`!list` `/list` — queue\n`/afkvc enabled:<true|false>` — keep Sulfuric in voice (AFK mode)\n`/vclist` — who is in voice, and for how long" },
           { name: "Admin", value: "`/proxy bot: command:` — run another bot's command (owner or admin)" },
           { name: "Fun", value: "`/gift` `/poll` `/giveaway` `/remind` `/afk` `/coinflip` `/dice` `/8ball` `/rps` `/joke` `/fact`" },
           { name: "Actions", value: "`/hug` `/pat` `/boop` `/bap` `/bite` `/kiss` `/meow` `/poke` `/carry` `/hamburger` `/jumpscare` `/defenestrate` `/gnaw` `/arrest` `/blowup` `/murder`" },

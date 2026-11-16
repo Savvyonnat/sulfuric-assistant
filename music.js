@@ -33,7 +33,7 @@ function yt(args, opts = {}) {
 
 function getQueue(guildId) {
   if (!queues.has(guildId)) {
-    queues.set(guildId, { items: [], index: 0, connection: null, player: null, channelId: null });
+    queues.set(guildId, { items: [], index: 0, connection: null, player: null, channelId: null, afkSince: null, silenceProc: null });
   }
   return queues.get(guildId);
 }
@@ -115,6 +115,41 @@ function createOpusStream(url) {
   return ff.stdout;
 }
 
+/**
+ * A continuous, near-inaudible pink-noise stream used to keep a voice
+ * connection alive. Real (but ~-68 dB) audio means Discord keeps treating the
+ * bot as transmitting, so it is never moved to AFK or disconnected.
+ * Tune with env AFK_NOISE (amplitude, default 0.002).
+ */
+function spawnSilence() {
+  const amplitude = Number(process.env.AFK_NOISE || 0.002);
+  return spawn(FFMPEG, [
+    "-hide_banner", "-loglevel", "error",
+    "-f", "lavfi", "-i", "anoisesrc=color=pink:amplitude=" + amplitude,
+    "-f", "ogg", "-c:a", "libopus", "-ar", "48000", "-ac", "2", "-b:a", "32k",
+    "pipe:1"
+  ], { stdio: ["ignore", "pipe", "inherit"] });
+}
+
+/** Play the keep-alive noise on the guild's player. */
+function playSilence(guildId) {
+  const queue = getQueue(guildId);
+  if (!queue.player) return;
+  stopSilence(queue);
+  const child = spawnSilence();
+  queue.silenceProc = child;
+  child.on("error", () => {});
+  const resource = createAudioResource(child.stdout, { inputType: StreamType.OggOpus, inlineVolume: false });
+  queue.player.play(resource);
+}
+
+/** Kill the keep-alive ffmpeg process so it does not leak. */
+function stopSilence(queue) {
+  if (!queue?.silenceProc) return;
+  try { queue.silenceProc.kill(); } catch { /* already gone */ }
+  queue.silenceProc = null;
+}
+
 /** Download a URL as MP3. Returns the file path. */
 function downloadMp3(url) {
   return new Promise((resolve, reject) => {
@@ -165,11 +200,15 @@ async function ensureConnection(guild, channel) {
   queue.channelId = channel.id;
 
   player.on(AudioPlayerStatus.Idle, () => {
+    if (queue.afkSince) { playSilence(guild.id); return; }
     queue.index += 1;
     playCurrent(guild.id).catch(() => {});
   });
   player.on("error", e => console.error("[voice] player error:", e.message));
-  connection.on(VoiceConnectionStatus.Destroyed, () => queues.delete(guild.id));
+  connection.on(VoiceConnectionStatus.Destroyed, () => {
+    stopSilence(queue);
+    queues.delete(guild.id);
+  });
   connection.on("stateChange", (oldState, newState) => {
     console.log(`[voice] ${guild.id}: ${oldState.status} -> ${newState.status}`);
   });
@@ -202,6 +241,13 @@ async function play(guild, member, query) {
   if (!song) return `Couldn't find a song for "${query}".`;
 
   const queue = getQueue(guild.id);
+  if (queue.afkSince) {
+    // Music takes over from AFK keep-alive mode.
+    queue.afkSince = null;
+    queue.items = [];
+    queue.index = 0;
+    try { queue.player?.stop(); } catch { /* ignore */ }
+  }
   queue.items.push(song);
 
   if (!queue.connection) {
@@ -240,9 +286,54 @@ function stop(guild) {
   queue.items = [];
   queue.index = 0;
   try { queue.player?.stop(); } catch { /* ignore */ }
+  stopSilence(queue);
   try { queue.connection?.destroy(); } catch { /* ignore */ }
   queues.delete(guild.id);
   return "Stopped and the queue has been cleared. >w<";
+}
+
+/**
+ * AFK voice mode: join a channel and keep transmitting near-silent audio so
+ * Discord never moves the bot to AFK or disconnects it.
+ */
+async function afkStart(guild, channel) {
+  if (!channel) return "Join a voice channel first, or tell me which one. >w<";
+  const queue = getQueue(guild.id);
+
+  if (!queue.connection) {
+    try {
+      await ensureConnection(guild, channel);
+    } catch (e) {
+      try { queue.connection?.destroy(); } catch { /* ignore */ }
+      queues.delete(guild.id);
+      console.error("[voice] afk join failed:", e.message);
+      return "Failed to join the voice channel. Make sure Sulfuric has **Connect** and **Speak** permission there. >w<";
+    }
+  }
+
+  const q = getQueue(guild.id);
+  q.afkSince = Date.now();
+  q.items = [];
+  q.index = 0;
+  playSilence(guild.id);
+  return `AFK mode **ON** in **${channel.name}**. I will stay here and keep the channel alive. >w<`;
+}
+
+function afkStop(guild) {
+  const queue = queues.get(guild.id);
+  if (!queue?.afkSince) return "AFK mode is not active.";
+  queue.afkSince = null;
+  try { queue.player?.stop(); } catch { /* ignore */ }
+  stopSilence(queue);
+  try { queue.connection?.destroy(); } catch { /* ignore */ }
+  queues.delete(guild.id);
+  return "AFK mode **OFF**. I have left the voice channel. >w<";
+}
+
+function afkInfo(guild) {
+  const queue = queues.get(guild.id);
+  if (!queue?.afkSince) return null;
+  return { since: queue.afkSince, channelId: queue.channelId };
 }
 
 function list(guild) {
@@ -259,5 +350,6 @@ function list(guild) {
 
 module.exports = {
   searchSongs, resolveSong, videoInfo, downloadMp3,
-  play, skip, stop, list, getQueue, secondsToClock, YTDLP
+  play, skip, stop, list, getQueue, secondsToClock, YTDLP,
+  afkStart, afkStop, afkInfo
 };
